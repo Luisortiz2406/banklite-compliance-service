@@ -97,10 +97,12 @@ export class ComplianceService {
   }
 
   async handleAccountCreated(payload: { idUser: string; email?: string; nombreCompleto?: string }) {
-    await this.dataSource.getRepository(ComplianceAccount).upsert(
-      { idUser: payload.idUser, email: payload.email ?? null, nombreCompleto: payload.nombreCompleto ?? null },
-      ['idUser'],
-    );
+    await this.dataSource
+      .getRepository(ComplianceAccount)
+      .upsert(
+        { idUser: payload.idUser, email: payload.email ?? null, nombreCompleto: payload.nombreCompleto ?? null },
+        ['idUser'],
+      );
   }
 
   async handleIdentityVerified(payload: { idUser: string }) {
@@ -125,9 +127,17 @@ export class ComplianceService {
     }
   }
 
-  async handleFraudAlert(payload: { idUser: string; accountId: string; transactionId: string; score: number; reason: string }) {
+  async handleFraudAlert(payload: {
+    idUser: string;
+    accountId: string;
+    transactionId: string;
+    score: number;
+    reason: string;
+  }) {
     const repo = this.dataSource.getRepository(SuspiciousActivityReport);
-    const existing = await repo.findOne({ where: { transactionId: payload.transactionId, accountId: payload.accountId, source: 'fraud.alert' } });
+    const existing = await repo.findOne({
+      where: { transactionId: payload.transactionId, accountId: payload.accountId, source: 'fraud.alert' },
+    });
     if (existing) return; // reentrega
     const severity = payload.score >= 80 ? 'high' : payload.score >= 60 ? 'medium' : 'low';
     await repo.save(
@@ -234,7 +244,11 @@ export class ComplianceService {
 
   async listReports(page = 1, limit = 25) {
     const repo = this.dataSource.getRepository(AmlReport);
-    const [items, total] = await repo.findAndCount({ order: { generatedAt: 'DESC' }, skip: (page - 1) * limit, take: limit });
+    const [items, total] = await repo.findAndCount({
+      order: { generatedAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
     return { items, total, page, limit };
   }
 
@@ -247,7 +261,12 @@ export class ComplianceService {
     if (status) where.status = status;
     if (severity) where.severity = severity;
     const repo = this.dataSource.getRepository(SuspiciousActivityReport);
-    const [items, total] = await repo.findAndCount({ where, order: { createdAt: 'DESC' }, skip: (page - 1) * limit, take: limit });
+    const [items, total] = await repo.findAndCount({
+      where,
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
     return { items, total, page, limit };
   }
 

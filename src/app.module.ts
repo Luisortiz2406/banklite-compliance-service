@@ -30,7 +30,14 @@ import { validateEnv } from './config/env.validation';
       useFactory: (config: ConfigService) => ({
         type: 'postgres' as const,
         url: config.get<string>('DATABASE_URL'),
-        entities: [ComplianceTransaction, ComplianceAccount, ComplianceIdentity, SuspiciousActivityReport, AmlReport, AdminAudit],
+        entities: [
+          ComplianceTransaction,
+          ComplianceAccount,
+          ComplianceIdentity,
+          SuspiciousActivityReport,
+          AmlReport,
+          AdminAudit,
+        ],
         synchronize: true,
         logging: false,
       }),

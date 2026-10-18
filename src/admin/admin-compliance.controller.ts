@@ -1,9 +1,31 @@
-import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, NotFoundException, Param, Patch, Post, Query, Req, ServiceUnavailableException, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  ConflictException,
+  Controller,
+  Get,
+  HttpCode,
+  NotFoundException,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  ServiceUnavailableException,
+  UseGuards,
+} from '@nestjs/common';
 import { ComplianceService } from '../compliance/compliance.service';
 import { AdminAuditService } from '../common/staff/admin-audit.service';
 import { StaffAuthGuard, StaffRoles } from '../common/staff/staff-auth.guard';
 import { EventConsumerService } from '../events/event-consumer.service';
-import { AuditQueryDto, CreateReportDto, KpisQueryDto, ReportsQueryDto, ResolveSarDto, SarsQueryDto } from './admin.dto';
+import {
+  AuditQueryDto,
+  CreateReportDto,
+  KpisQueryDto,
+  ReportsQueryDto,
+  ResolveSarDto,
+  SarsQueryDto,
+} from './admin.dto';
 
 /** Panel administrativo de Compliance Service: KPIs, SAR y reportes AML. */
 @Controller('compliance/admin')
@@ -40,7 +62,8 @@ export class AdminComplianceController {
   async resolveSar(@Param('id') id: string, @Body() dto: ResolveSarDto, @Req() req: any) {
     const result = await this.compliance.resolveSar(id, dto.status, dto.note, req.staff.username);
     if (!result) throw new NotFoundException('SAR no encontrado.');
-    if (result.conflict) throw new ConflictException(`Este SAR ya fue resuelto (estado actual: '${result.sar.status}').`);
+    if (result.conflict)
+      throw new ConflictException(`Este SAR ya fue resuelto (estado actual: '${result.sar.status}').`);
     await this.audit.record(req.staff, {
       action: `sar.${dto.status}`,
       targetType: 'suspicious_activity_report',
@@ -103,7 +126,12 @@ export class AdminComplianceController {
   async requeue(@Req() req: any) {
     try {
       const result = await this.consumer.requeueDeadLetters(100);
-      await this.audit.record(req.staff, { action: 'dlq.requeue', targetType: 'queue', targetId: 'compliance-service', details: result });
+      await this.audit.record(req.staff, {
+        action: 'dlq.requeue',
+        targetType: 'queue',
+        targetId: 'compliance-service',
+        details: result,
+      });
       return result;
     } catch (e) {
       throw new ServiceUnavailableException((e as Error).message);

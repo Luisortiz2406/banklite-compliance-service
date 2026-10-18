@@ -2,14 +2,28 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import * as amqplib from 'amqplib';
 import { ComplianceService } from '../compliance/compliance.service';
-import { assertRetryQueues, handleFailure, peekDeadLetters, queueStats, requeueDeadLetters, originalRoutingKey, PoisonMessageError } from './retry-policy';
+import {
+  assertRetryQueues,
+  handleFailure,
+  peekDeadLetters,
+  queueStats,
+  requeueDeadLetters,
+  originalRoutingKey,
+  PoisonMessageError,
+} from './retry-policy';
 
 const RECONNECT_DELAY_MS = 5000;
 
 // Eventos que Compliance proyecta en sus propias tablas (sección 4.10 del
 // documento: nunca lee la base de otro servicio). `fraud.alert` lo publica
 // Fraud Service; el resto ya existía en el bus antes de esta entrega.
-const SUBSCRIBED_EVENTS = ['transaction.completed', 'account.created', 'identity.verified', 'identity.rejected', 'fraud.alert'];
+const SUBSCRIBED_EVENTS = [
+  'transaction.completed',
+  'account.created',
+  'identity.verified',
+  'identity.rejected',
+  'fraud.alert',
+];
 
 /**
  * Consumidor multi-evento: a diferencia de los demás servicios (que se
