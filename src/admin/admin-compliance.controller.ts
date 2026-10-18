@@ -38,6 +38,7 @@ export class AdminComplianceController {
   ) {}
 
   @Get('kpis')
+  @StaffRoles('compliance', 'admin')
   kpis(@Query() q: KpisQueryDto) {
     const from = new Date(q.from);
     const to = new Date(q.to);
@@ -46,11 +47,13 @@ export class AdminComplianceController {
   }
 
   @Get('sars')
+  @StaffRoles('compliance', 'admin')
   sars(@Query() q: SarsQueryDto) {
     return this.compliance.listSars(q.status, q.severity, q.page ?? 1, q.limit ?? 25);
   }
 
   @Get('sars/:id')
+  @StaffRoles('compliance', 'admin')
   async sarDetail(@Param('id') id: string) {
     const sar = await this.compliance.sarDetail(id);
     if (!sar) throw new NotFoundException('SAR no encontrado.');
@@ -58,7 +61,7 @@ export class AdminComplianceController {
   }
 
   @Patch('sars/:id')
-  @StaffRoles('admin')
+  @StaffRoles('compliance', 'admin')
   async resolveSar(@Param('id') id: string, @Body() dto: ResolveSarDto, @Req() req: any) {
     const result = await this.compliance.resolveSar(id, dto.status, dto.note, req.staff.username);
     if (!result) throw new NotFoundException('SAR no encontrado.');
@@ -75,11 +78,13 @@ export class AdminComplianceController {
   }
 
   @Get('reports')
+  @StaffRoles('compliance', 'admin')
   reports(@Query() q: ReportsQueryDto) {
     return this.compliance.listReports(q.page ?? 1, q.limit ?? 25);
   }
 
   @Get('reports/:id')
+  @StaffRoles('compliance', 'admin')
   async reportDetail(@Param('id') id: string) {
     const report = await this.compliance.reportDetail(id);
     if (!report) throw new NotFoundException('Reporte no encontrado.');
@@ -87,8 +92,8 @@ export class AdminComplianceController {
   }
 
   @Post('reports')
+  @StaffRoles('compliance', 'admin')
   @HttpCode(201)
-  @StaffRoles('admin')
   async createReport(@Body() dto: CreateReportDto, @Req() req: any) {
     if (dto.periodFrom > dto.periodTo) throw new BadRequestException("'periodFrom' debe ser anterior a 'periodTo'.");
     const report = await this.compliance.generateReport(dto.periodFrom, dto.periodTo, req.staff.username);
