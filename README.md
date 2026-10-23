@@ -1,5 +1,7 @@
 # Compliance Service (`compliance-service`)
 
+[![CI](https://github.com/Luisortiz2406/banklite-compliance-service/actions/workflows/ci.yml/badge.svg)](https://github.com/Luisortiz2406/banklite-compliance-service/actions/workflows/ci.yml)
+
 Cumplimiento y antilavado (AML): indicadores, reportes de actividad sospechosa (SAR) y reportes regulatorios.
 
 Parte de **BankLite**, banco digital académico construido con microservicios. Cada
@@ -151,10 +153,25 @@ npm test
 
 ## Despliegue
 
-Desplegado en Railway (raíz del servicio: esta carpeta, `railway.json` con
-`healthcheckPath: /health`). El servicio no tiene dominio público propio: se accede
+Desplegado en Railway **desde este repositorio** (rama `main`): `railway.json` en la
+raíz define el build por `Dockerfile` y el health check en `/health`; cada push a
+`main` redespliega el servicio. El servicio no tiene dominio público propio: se accede
 por el gateway.
 
-- Estado del servicio y de su base: https://api-gateway-production-dd7f.up.railway.app/health (entrada `compliance-service`: `status` y `database` deben estar en `ok`)
+- Estado del servicio y de su base: [https://api-gateway-production-dd7f.up.railway.app/health](https://api-gateway-production-dd7f.up.railway.app/health) (entrada `compliance-service`: `status` y `database` deben estar en `ok`)
 - Rutas de este servicio: `https://api-gateway-production-dd7f.up.railway.app/compliance/...`
 - Aplicación web: https://frontend-production-eff3c.up.railway.app
+
+## Repositorios relacionados
+
+Servicios de BankLite con los que se comunica este. **Llama a** / **Lo llama**: HTTP
+por la red interna; **Recibe** / **Envía**: eventos en RabbitMQ. Cada uno vive y se
+despliega desde su propio repositorio.
+
+| Repositorio | Relación con este servicio |
+|---|---|
+| [banklite-api-gateway](https://github.com/Luisortiz2406/banklite-api-gateway) | **Lo llama:** punto de entrada público, le enruta las rutas de este servicio |
+| [banklite-auth-service](https://github.com/Luisortiz2406/banklite-auth-service) | **Recibe:** `account.created` |
+| [banklite-kyc-service](https://github.com/Luisortiz2406/banklite-kyc-service) | **Recibe:** `identity.verified`, `identity.rejected` |
+| [banklite-ledger-service](https://github.com/Luisortiz2406/banklite-ledger-service) | **Recibe:** `transaction.completed` |
+| [banklite-fraud-service](https://github.com/Luisortiz2406/banklite-fraud-service) | **Recibe:** `fraud.alert` |
