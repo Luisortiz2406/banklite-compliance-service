@@ -12,14 +12,17 @@ microservicio tiene su propia base de datos y se comunica con los demás por HTT
 
 Mantiene **proyecciones** de cuentas, identidades y movimientos a partir de los eventos
 (sin leer las bases de otros servicios) y abre **SAR** cuando llega una alerta de
-fraude o cuando el volumen de un cliente supera el umbral AML. Genera reportes y los
-KPI del panel.
+fraude o cuando el volumen de un cliente supera el umbral AML. Registra los **cierres de
+cuenta** (`account.closed`) y marca para revisión los de clientes con alertas recientes.
+Genera reportes y los KPI del panel.
 
 **Reglas de negocio principales**
 
 - SAR desde `fraud.alert` o desde la regla de volumen (`COMPLIANCE_AML_VOLUME_THRESHOLD`).
 - Severidad `low` / `medium` / `high`; un SAR `open` se resuelve como `filed` (reportado) o `dismissed` (descartado), con motivo y responsable.
 - Proyecciones idempotentes (clave única por `transactionId`).
+- **Cierre de cuenta** (`account.closed`): un registro por cliente (el evento repetido no crea otro). Si el cliente tuvo alertas de fraude (SAR de `fraud.alert`) desde **30 días antes del cierre**, el cierre queda **por revisar**; una alerta que llega después del cierre lo vuelve a dejar por revisar. **No se crea un SAR automático**: un empleado lo revisa y lo marca como revisado con un motivo.
+- Bitácora (`admin_audit`): cada consulta de cierres (`closure.list_viewed`, `closure.viewed`) y cada «Marcar revisado» (`closure.reviewed`, en la misma transacción que el cambio).
 - Solo roles `compliance` y `admin`.
 
 **Comunicación con otros servicios**
@@ -27,7 +30,7 @@ KPI del panel.
 | | |
 |---|---|
 | Publica eventos | — |
-| Consume eventos | `account.created` (auth)<br>`identity.verified`, `identity.rejected` (kyc)<br>`transaction.completed` (ledger)<br>`fraud.alert` (fraud) |
+| Consume eventos | `account.created` (auth)<br>`identity.verified`, `identity.rejected` (kyc)<br>`transaction.completed` (ledger)<br>`fraud.alert` (fraud)<br>`account.closed` (account) |
 | Llama a | — |
 | Lo llaman | api-gateway (rutas `/compliance/*`) |
 | Integraciones externas | — |
@@ -51,6 +54,7 @@ rutas internas.
 | `compliance_accounts` | Clientes (proyección de `account.created`). |
 | `compliance_identities` | Estado de identidad (proyección de kyc). |
 | `compliance_transactions` | Movimientos (proyección de `transaction.completed`). |
+| `compliance_closures` | Cierres de cuenta (proyección de `account.closed`): fecha, cuentas, alertas recientes y revisión. |
 | `suspicious_activity_reports` | SAR y su resolución. |
 | `aml_reports` | Reportes AML generados. |
 | `admin_audit` | Bitácora de acciones del panel en este servicio (quién, rol, qué y cuándo). |
@@ -112,10 +116,13 @@ A través del gateway las rutas son las mismas (`http://localhost:8080/complianc
 
 | Método | Ruta | Roles | Descripción |
 |---|---|---|---|
-| GET | `/compliance/admin/kpis` | compliance, admin | Indicadores de cumplimiento. |
+| GET | `/compliance/admin/kpis` | compliance, admin | Indicadores de cumplimiento (incluye `closedAccounts` del periodo y `closuresPendingReview`). |
 | GET | `/compliance/admin/sars` | compliance, admin | Reportes de actividad sospechosa. |
 | GET | `/compliance/admin/sars/:id` | compliance, admin | Detalle de un SAR. |
 | PATCH | `/compliance/admin/sars/:id` | compliance, admin | Resuelve un SAR (lo reporta o lo descarta). |
+| GET | `/compliance/admin/closures?estado=por_revisar|revisados|todos` | compliance, admin | Cierres de cuenta (queda en la bitácora). |
+| GET | `/compliance/admin/closures/:idUser` | compliance, admin | Un cierre con sus alertas de fraude de la ventana (queda en la bitácora). |
+| PATCH | `/compliance/admin/closures/:idUser` | compliance, admin | «Marcar revisado» (`{ note }`, 5 a 300 caracteres); 409 si no requiere revisión o ya se revisó. |
 | GET | `/compliance/admin/reports` | compliance, admin | Reportes AML. |
 | GET | `/compliance/admin/reports/:id` | compliance, admin | Detalle de un reporte. |
 | POST | `/compliance/admin/reports` | compliance, admin | Genera un reporte AML de un periodo. |
@@ -138,7 +145,7 @@ todas se configuran como variables del servicio, nunca en el código.
 | `PORT` | No | `3010` | Puerto HTTP del servicio. |
 | `DATABASE_URL` | **Sí** (no arranca sin ella) | `postgres://compliance_svc:<DB_PASSWORD_COMPLIANCE>@localhost:5432/compliance_db` | Conexión a PostgreSQL de **su** base (rol propio, sin acceso a las demás). |
 | `STAFF_JWT_SECRET` | **Sí** (no arranca sin ella) | — | Firma de los JWT de empleados del panel (el mismo que en auth-service; distinto de JWT_SECRET). |
-| `RABBITMQ_URL` | No | `amqp://banklite:banklite@localhost:5672` | Conexión a RabbitMQ. Sin ella los eventos quedan en el outbox (o no se consumen). |
+| `RABBITMQ_URL` | No | `amqp://banklite:<RABBITMQ_PASSWORD>@localhost:5672` | Conexión a RabbitMQ. Sin ella los eventos quedan en el outbox (o no se consumen). |
 | `COMPLIANCE_AML_VOLUME_THRESHOLD` | No | `50000000` | Volumen (COP) desde el que se abre un SAR por la regla de volumen. |
 | `RABBITMQ_EXCHANGE` | No | `banklite.events` | Exchange topic de eventos (`banklite.events`). |
 | `RABBITMQ_QUEUE` | No | `compliance-service.events` | Cola propia del servicio (con `<cola>.retry` y `<cola>.dlq`). |
@@ -147,9 +154,26 @@ todas se configuran como variables del servicio, nunca en el código.
 
 ## Pruebas
 
+Pruebas del panel (permisos por rol, bitácora y validación), del contenido de
+`account.closed` y de los cierres de cuenta: registro único (evento repetido o
+simultáneo), ventana de 30 días con sus bordes, alertas de otro cliente o de la regla de
+volumen que no cuentan, sin SAR automático, alerta después del cierre, alerta y cierre a la
+vez, «Marcar revisado» con su bitácora, filtros e indicadores.
+
+Las de cierres corren contra un PostgreSQL real (transacciones y bloqueos). Cada corrida
+crea una base temporal y la borra al terminar:
+
 ```bash
-npm test
+TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres npm test
 ```
+
+Sin `TEST_DATABASE_URL` se omiten en local; en la CI son obligatorias (el workflow
+levanta un Postgres de servicio).
+
+`database/schema.sql` y `database/backup.sql` se verifican en CI (`npm run verificar:esquema`,
+después de `npm run build`): se restauran en Postgres y TypeORM no debe encontrar
+diferencias con las entidades (`src/entities.ts`). Un caso de control alterado a propósito
+debe fallar.
 
 ## Despliegue
 
@@ -175,3 +199,4 @@ despliega desde su propio repositorio.
 | [banklite-kyc-service](https://github.com/Luisortiz2406/banklite-kyc-service) | **Recibe:** `identity.verified`, `identity.rejected` |
 | [banklite-ledger-service](https://github.com/Luisortiz2406/banklite-ledger-service) | **Recibe:** `transaction.completed` |
 | [banklite-fraud-service](https://github.com/Luisortiz2406/banklite-fraud-service) | **Recibe:** `fraud.alert` |
+| [banklite-account-service](https://github.com/Luisortiz2406/banklite-account-service) | **Recibe:** `account.closed` |

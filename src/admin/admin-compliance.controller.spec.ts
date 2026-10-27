@@ -11,6 +11,7 @@ import request = require('supertest');
 
 const SECRET = 'secreto-de-prueba-para-tokens-de-empleado-0123456789';
 const SAR_ID = '33333333-3333-4333-8333-333333333333';
+const CLIENTE = '11111111-1111-4111-8111-111111111111';
 
 describe('Permisos del panel de cumplimiento (403 por rol)', () => {
   let app: INestApplication;
@@ -20,6 +21,9 @@ describe('Permisos del panel de cumplimiento (403 por rol)', () => {
     listSars: jest.fn().mockResolvedValue({ items: [] }),
     sars: jest.fn().mockResolvedValue({ items: [] }),
     resolveSar: jest.fn().mockResolvedValue({ sar }),
+    listClosures: jest.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 25 }),
+    closureDetail: jest.fn().mockResolvedValue({ idUser: CLIENTE, alerts: [] }),
+    markClosureReviewed: jest.fn().mockResolvedValue({ closure: { idUser: CLIENTE } }),
   };
   const audit = { record: jest.fn(), list: jest.fn().mockResolvedValue({ items: [] }) };
 
@@ -83,5 +87,99 @@ describe('Permisos del panel de cumplimiento (403 por rol)', () => {
 
   it('Soporte sí ve el estado de la cola (Monitoreo)', async () => {
     await request(app.getHttpServer()).get('/compliance/admin/dlq').set('Authorization', token('support')).expect(200);
+  });
+
+  describe('Cierres de cuenta', () => {
+    const reviewBody = { note: 'Revisado con el equipo de fraude' };
+
+    it('Soporte NO ve los cierres ni puede marcarlos revisados (403)', async () => {
+      const server = app.getHttpServer();
+      await request(server).get('/compliance/admin/closures').set('Authorization', token('support')).expect(403);
+      await request(server)
+        .get(`/compliance/admin/closures/${CLIENTE}`)
+        .set('Authorization', token('support'))
+        .expect(403);
+      await request(server)
+        .patch(`/compliance/admin/closures/${CLIENTE}`)
+        .set('Authorization', token('support'))
+        .send(reviewBody)
+        .expect(403);
+      expect(compliance.listClosures).not.toHaveBeenCalled();
+      expect(compliance.markClosureReviewed).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it.each<StaffRole>(['compliance', 'admin'])('%s consulta el listado y queda en la bitácora', async (role) => {
+      await request(app.getHttpServer())
+        .get('/compliance/admin/closures?estado=por_revisar')
+        .set('Authorization', token(role))
+        .expect(200);
+      expect(compliance.listClosures).toHaveBeenCalledWith('por_revisar', 1, 25);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ role, username: role }),
+        expect.objectContaining({
+          action: 'closure.list_viewed',
+          details: expect.objectContaining({ estado: 'por_revisar' }),
+        }),
+      );
+    });
+
+    it('el detalle de un cierre queda en la bitácora con el cliente', async () => {
+      await request(app.getHttpServer())
+        .get(`/compliance/admin/closures/${CLIENTE}`)
+        .set('Authorization', token('compliance'))
+        .expect(200);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ action: 'closure.viewed', targetId: CLIENTE }),
+      );
+    });
+
+    it('un cierre que no existe responde 404 y no se registra', async () => {
+      compliance.closureDetail.mockResolvedValueOnce(null);
+      await request(app.getHttpServer())
+        .get(`/compliance/admin/closures/${CLIENTE}`)
+        .set('Authorization', token('compliance'))
+        .expect(404);
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('Marcar revisado: pasa el motivo y el empleado; un conflicto responde 409', async () => {
+      await request(app.getHttpServer())
+        .patch(`/compliance/admin/closures/${CLIENTE}`)
+        .set('Authorization', token('compliance'))
+        .send(reviewBody)
+        .expect(200);
+      expect(compliance.markClosureReviewed).toHaveBeenCalledWith(
+        CLIENTE,
+        reviewBody.note,
+        expect.objectContaining({ username: 'compliance', role: 'compliance' }),
+      );
+
+      compliance.markClosureReviewed.mockResolvedValueOnce({ conflict: 'Este cierre ya fue revisado por x.' });
+      await request(app.getHttpServer())
+        .patch(`/compliance/admin/closures/${CLIENTE}`)
+        .set('Authorization', token('compliance'))
+        .send(reviewBody)
+        .expect(409);
+    });
+
+    it('rechaza un motivo corto, un filtro desconocido y un id que no es UUID (400)', async () => {
+      const server = app.getHttpServer();
+      await request(server)
+        .patch(`/compliance/admin/closures/${CLIENTE}`)
+        .set('Authorization', token('compliance'))
+        .send({ note: 'ok' })
+        .expect(400);
+      await request(server)
+        .get('/compliance/admin/closures?estado=otro')
+        .set('Authorization', token('compliance'))
+        .expect(400);
+      await request(server)
+        .get('/compliance/admin/closures/no-es-uuid')
+        .set('Authorization', token('compliance'))
+        .expect(400);
+      expect(compliance.markClosureReviewed).not.toHaveBeenCalled();
+    });
   });
 });

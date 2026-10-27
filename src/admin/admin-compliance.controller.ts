@@ -7,6 +7,7 @@ import {
   HttpCode,
   NotFoundException,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -20,14 +21,16 @@ import { StaffAuthGuard, StaffRoles } from '../common/staff/staff-auth.guard';
 import { EventConsumerService } from '../events/event-consumer.service';
 import {
   AuditQueryDto,
+  ClosuresQueryDto,
   CreateReportDto,
   KpisQueryDto,
   ReportsQueryDto,
   ResolveSarDto,
+  ReviewClosureDto,
   SarsQueryDto,
 } from './admin.dto';
 
-/** Panel administrativo de Compliance Service: KPIs, SAR y reportes AML. */
+/** Panel administrativo de Compliance Service: KPIs, SAR, reportes AML y cierres de cuenta. */
 @Controller('compliance/admin')
 @UseGuards(StaffAuthGuard)
 export class AdminComplianceController {
@@ -75,6 +78,43 @@ export class AdminComplianceController {
       details: { idUser: result.sar.idUser, accountId: result.sar.accountId, severity: result.sar.severity },
     });
     return result.sar;
+  }
+
+  // Cierres de cuenta (account.closed). Cada consulta y cada «Marcar revisado» quedan en la bitácora.
+  @Get('closures')
+  @StaffRoles('compliance', 'admin')
+  async closures(@Query() q: ClosuresQueryDto, @Req() req: any) {
+    const estado = q.estado ?? 'todos';
+    const result = await this.compliance.listClosures(estado, q.page ?? 1, q.limit ?? 25);
+    await this.audit.record(req.staff, {
+      action: 'closure.list_viewed',
+      targetType: 'compliance_closure',
+      targetId: 'listado',
+      details: { estado, page: result.page, total: result.total },
+    });
+    return result;
+  }
+
+  @Get('closures/:idUser')
+  @StaffRoles('compliance', 'admin')
+  async closureDetail(@Param('idUser', ParseUUIDPipe) idUser: string, @Req() req: any) {
+    const closure = await this.compliance.closureDetail(idUser);
+    if (!closure) throw new NotFoundException('Este cliente no tiene un cierre de cuenta registrado.');
+    await this.audit.record(req.staff, {
+      action: 'closure.viewed',
+      targetType: 'compliance_closure',
+      targetId: idUser,
+    });
+    return closure;
+  }
+
+  @Patch('closures/:idUser')
+  @StaffRoles('compliance', 'admin')
+  async reviewClosure(@Param('idUser', ParseUUIDPipe) idUser: string, @Body() dto: ReviewClosureDto, @Req() req: any) {
+    const result = await this.compliance.markClosureReviewed(idUser, dto.note, req.staff);
+    if (!result) throw new NotFoundException('Este cliente no tiene un cierre de cuenta registrado.');
+    if ('conflict' in result) throw new ConflictException(result.conflict);
+    return result.closure;
   }
 
   @Get('reports')
