@@ -33,3 +33,13 @@ export class AuditQueryDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit?: number;
 }
+
+export class ClosuresQueryDto {
+  @IsOptional() @IsIn(['por_revisar', 'revisados', 'todos']) estado?: 'por_revisar' | 'revisados' | 'todos';
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) limit?: number;
+}
+
+export class ReviewClosureDto {
+  @IsString() @MinLength(5, { message: 'Escribe el motivo (mínimo 5 caracteres).' }) @MaxLength(300) note: string;
+}

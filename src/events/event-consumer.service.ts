@@ -13,16 +13,30 @@ import {
 } from './retry-policy';
 
 const RECONNECT_DELAY_MS = 5000;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Valida el contenido de account.closed; si no sirve, el mensaje va directo a la DLQ. */
+export function parseAccountClosed(data: any) {
+  if (typeof data?.idUser !== 'string' || !UUID.test(data.idUser))
+    throw new PoisonMessageError('account.closed sin idUser válido.');
+  if (typeof data.cerradaEn !== 'string' || isNaN(Date.parse(data.cerradaEn)))
+    throw new PoisonMessageError('account.closed sin fecha de cierre válida.');
+  const accounts = Array.isArray(data.cuentas)
+    ? data.cuentas.filter((c: unknown): c is string => typeof c === 'string').map((c: string) => c.slice(0, 40))
+    : [];
+  return { idUser: data.idUser as string, closedAt: new Date(data.cerradaEn), accounts };
+}
 
 // Eventos que Compliance proyecta en sus propias tablas (sección 4.10 del
 // documento: nunca lee la base de otro servicio). `fraud.alert` lo publica
-// Fraud Service; el resto ya existía en el bus antes de esta entrega.
+// Fraud Service y `account.closed`, account-service (cancelación de la cuenta).
 const SUBSCRIBED_EVENTS = [
   'transaction.completed',
   'account.created',
   'identity.verified',
   'identity.rejected',
   'fraud.alert',
+  'account.closed',
 ];
 
 /**
@@ -139,6 +153,9 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
           break;
         case 'fraud.alert':
           await this.compliance.handleFraudAlert(data);
+          break;
+        case 'account.closed':
+          await this.compliance.handleAccountClosed(parseAccountClosed(data));
           break;
         default:
           this.logger.warn(`Evento '${event}' sin manejador en Compliance, descartado.`);

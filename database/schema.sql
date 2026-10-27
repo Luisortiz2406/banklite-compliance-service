@@ -84,6 +84,23 @@ CREATE TABLE public.compliance_accounts (
 
 
 --
+-- Name: compliance_closures; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.compliance_closures (
+    id_user character varying NOT NULL,
+    closed_at timestamp with time zone NOT NULL,
+    accounts jsonb NOT NULL,
+    recent_alerts integer DEFAULT 0 NOT NULL,
+    requires_review boolean DEFAULT false NOT NULL,
+    reviewed_by character varying,
+    reviewed_at timestamp with time zone,
+    review_note character varying(300),
+    processed_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: compliance_identities; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -140,6 +157,14 @@ CREATE TABLE public.suspicious_activity_reports (
 
 ALTER TABLE ONLY public.aml_reports
     ADD CONSTRAINT "PK_0531db1fbbcd055b07e22556bc0" PRIMARY KEY (id);
+
+
+--
+-- Name: compliance_closures PK_ee3360c8185d4402cce196a8aca; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.compliance_closures
+    ADD CONSTRAINT "PK_ee3360c8185d4402cce196a8aca" PRIMARY KEY (id_user);
 
 
 --
@@ -217,6 +242,13 @@ CREATE INDEX "IDX_c66cdd8ff785489360e3d07aee" ON public.suspicious_activity_repo
 --
 
 CREATE INDEX idx_admin_audit_created ON public.admin_audit USING btree (created_at);
+
+
+--
+-- Name: idx_compliance_closures_closed; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_compliance_closures_closed ON public.compliance_closures USING btree (closed_at);
 
 
 --
