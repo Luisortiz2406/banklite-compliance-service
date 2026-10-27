@@ -182,7 +182,7 @@ COPY public.compliance_accounts (id, id_user, email, nombre_completo, created_at
 --
 
 COPY public.compliance_closures (id_user, closed_at, accounts, recent_alerts, requires_review, reviewed_by, reviewed_at, review_note, processed_at) FROM stdin;
-.
+\.
 
 
 --
