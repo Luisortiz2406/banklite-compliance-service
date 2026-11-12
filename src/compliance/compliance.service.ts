@@ -78,7 +78,8 @@ export class ComplianceService {
         .andWhere('tx.direction = :direction', { direction: 'out' })
         .andWhere('tx.occurredAt >= :windowStart', { windowStart })
         .getRawOne<{ sum: string }>();
-      const outflow30d = Number(sum) + payload.amount;
+      // La suma ya incluye la transacción actual (se guardó arriba): no se vuelve a sumar.
+      const outflow30d = Number(sum);
 
       const threshold = Number(this.config.get('COMPLIANCE_AML_VOLUME_THRESHOLD', '50000000'));
       if (outflow30d <= threshold) return;
