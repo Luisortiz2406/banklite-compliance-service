@@ -175,6 +175,10 @@ después de `npm run build`): se restauran en Postgres y TypeORM no debe encontr
 diferencias con las entidades (`src/entities.ts`). Un caso de control alterado a propósito
 debe fallar.
 
+Proyección de transacciones y regla de AML por volumen (la transacción actual cuenta una sola vez: `compliance.volume-rule.spec.ts`; el resto en `compliance.sar.spec.ts`), alertas de fraude a SAR con su severidad, resolución de SAR, KPIs y reportes, cierres de cuenta con su ventana de 30 días, consumidor de los seis eventos (`account.closed` inválido va a la DLQ), reintentos, guards, `/health` y validación de configuración.
+
+**Cobertura:** el pipeline la muestra en el resumen de cada corrida y exige un mínimo de 70 % de líneas y 50 % de ramas (`umbral-lineas` y `umbral-ramas` en `deploy.yml`). Hoy está en 91,8 % de líneas y 81,7 % de ramas.
+
 ## Despliegue
 
 Lo despliega **GitHub Actions** (`.github/workflows/deploy.yml`, que usa el workflow
